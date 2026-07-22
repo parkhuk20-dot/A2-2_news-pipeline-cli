@@ -42,8 +42,9 @@ def run_fetch(args: argparse.Namespace, cfg: Config) -> int:
     )
 
     client = HttpClient(cfg.http)
-    total_saved = 0
-    total_failed = 0
+    total_saved = 0      # raw 에 저장된 건수
+    body_failed = 0      # 저장은 됐지만 본문을 못 가져온 건수
+    feed_failed = 0      # RSS 피드 자체를 못 읽은 횟수
 
     try:
         with Database(cfg.path_for("db")) as db:
@@ -67,7 +68,7 @@ def run_fetch(args: argparse.Namespace, cfg: Config) -> int:
                         xml_text = client.get_text(feed_url, label=f"RSS 수집({source_name}/{category})")
                     except Exception as e:
                         log.error("RSS 수집 실패: %s/%s (%s)", source_name, category, e)
-                        total_failed += 1
+                        feed_failed += 1
                         continue
 
                     records = parse_feed(
@@ -106,7 +107,7 @@ def run_fetch(args: argparse.Namespace, cfg: Config) -> int:
                                 record["crawl_status"] = "ok"
                             else:
                                 record["crawl_status"] = "failed"
-                                total_failed += 1
+                                body_failed += 1
 
                         record["source"] = source_key
                         record["collected_at"] = now_iso()
@@ -126,8 +127,18 @@ def run_fetch(args: argparse.Namespace, cfg: Config) -> int:
     finally:
         client.close()
 
-    if total_failed:
-        log.warning("본문 확보 실패 %d건 — raw 에는 crawl_status='failed' 로 남겼습니다", total_failed)
-    log.info("수집 완료: %d건 성공, %d건 실패", total_saved, total_failed)
+    if feed_failed:
+        log.warning("RSS 피드 %d개를 읽지 못했습니다 (해당 피드는 건너뜀)", feed_failed)
+    if body_failed:
+        log.warning(
+            "본문 확보 실패 %d건 — raw 에는 crawl_status='failed' 로 남겼고 정제 단계에서 걸러집니다",
+            body_failed,
+        )
+    log.info(
+        "수집 완료: %d건 성공, %d건 실패 (본문 확보 %d건)",
+        total_saved,
+        body_failed + feed_failed,
+        total_saved - body_failed,
+    )
     log.info("raw 저장소에 저장 완료 (%s)", cfg.path_for("db", ensure_parent=False))
     return 0

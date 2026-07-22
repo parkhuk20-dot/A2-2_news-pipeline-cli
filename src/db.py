@@ -235,14 +235,17 @@ class Database:
         else:  # skip
             sql = f"INSERT OR IGNORE INTO clean_articles ({columns}) VALUES ({placeholders})"
 
+        # UPSERT 후의 lastrowid 는 삽입/갱신을 구분하는 근거로 쓸 수 없어서
+        # (SQLite 버전에 따라 직전 INSERT 의 rowid 가 남는다) 미리 존재 여부를 확인한다.
+        existed = self.url_exists(record["url"])
+
         before = self.conn.total_changes
-        cur = self.conn.execute(sql, params)
+        self.conn.execute(sql, params)
         self.conn.commit()
 
         if self.conn.total_changes == before:
             return "skipped"
-        # lastrowid 가 바뀌지 않으면 UPDATE 로 처리된 것
-        return "inserted" if policy != "upsert" or cur.lastrowid else "updated"
+        return "updated" if existed else "inserted"
 
     def url_exists(self, url: str) -> bool:
         return (

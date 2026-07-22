@@ -20,11 +20,25 @@ DESCRIPTION = "뉴스 수집 → 정제 → AI 요약·분석 → 시각화·리
 
 
 def _common_parser() -> argparse.ArgumentParser:
-    """모든 서브커맨드가 공유하는 옵션."""
+    """모든 서브커맨드가 공유하는 옵션 (도움말 표시용).
+
+    같은 옵션이 상위 파서와 서브파서에 함께 있으면, 서브파서가 나중에 파싱되면서
+    기본값으로 앞선 값을 덮어쓴다. 그래서 `main.py --config X fetch` 처럼 서브커맨드
+    '앞'에 준 값이 조용히 무시된다. 실제 값은 아래 pre_parse_globals() 로 따로 읽는다.
+    """
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--config", default=None, help="설정 파일 경로 (기본: config.json)")
     common.add_argument("--verbose", action="store_true", help="DEBUG 레벨까지 출력")
     return common
+
+
+def pre_parse_globals(argv: list[str]) -> argparse.Namespace:
+    """--config / --verbose 는 위치와 상관없이 인식되도록 먼저 훑는다."""
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--config", default=None)
+    pre.add_argument("--verbose", action="store_true")
+    known, _ = pre.parse_known_args(argv)
+    return known
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -200,12 +214,18 @@ HANDLERS: dict[str, Callable[[argparse.Namespace, Config], int]] = {
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw_argv = list(argv) if argv is not None else sys.argv[1:]
     parser = build_parser()
     args = parser.parse_args(argv)
 
     if not args.command:
         parser.print_help()
         return 1
+
+    # 서브커맨드 앞/뒤 어디에 써도 동작하도록 공통 옵션을 다시 확정한다
+    globals_ = pre_parse_globals(raw_argv)
+    args.config = globals_.config or args.config
+    args.verbose = globals_.verbose or args.verbose
 
     try:
         cfg = load_config(args.config)
