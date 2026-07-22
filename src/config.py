@@ -46,6 +46,31 @@ DEFAULTS: dict[str, Any] = {
 }
 
 API_KEY_ENV = "OPENAI_API_KEY"
+ENV_FILE = ROOT / ".env"
+
+
+def load_dotenv(path: Path = ENV_FILE) -> list[str]:
+    """프로젝트 루트의 .env 를 읽어 환경변수에 채운다 (이미 있는 값은 덮지 않는다).
+
+    셸에서 export 한 값은 그 셸에서만 유효해서, cron 이나 다른 터미널에서 실행하면
+    키를 못 찾는다. .env 파일에 두면 실행 위치와 무관하게 읽힌다.
+    이 파일은 .gitignore 에 있어 커밋되지 않는다.
+    """
+    if not path.exists():
+        return []
+
+    loaded: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip().removeprefix("export ").strip()
+        value = value.strip().strip("'\"")
+        if key and key not in os.environ:
+            os.environ[key] = value
+            loaded.append(key)
+    return loaded
 
 
 class ConfigError(Exception):
@@ -152,6 +177,7 @@ class Config:
 
 def load_config(path: str | Path | None = None) -> Config:
     """설정 파일을 읽어 Config 객체를 만든다."""
+    load_dotenv()  # API 키는 환경변수 → 없으면 .env 순으로 찾는다
     cfg_path = Path(path) if path else ROOT / "config.json"
     if not cfg_path.is_absolute():
         cfg_path = ROOT / cfg_path

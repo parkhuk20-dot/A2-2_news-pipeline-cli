@@ -130,6 +130,19 @@ python main.py show --id 42 --full
 | `OPENAI_API_KEY` | AI 기능 사용 시 | OpenAI API 키 |
 | `OPENAI_BASE_URL` | 선택 | 프록시/호환 엔드포인트를 쓸 때 |
 
+키를 전달하는 방법은 두 가지이고, **환경변수가 우선**입니다.
+
+```bash
+# 방법 1) 셸 환경변수 — 그 셸에서만 유효
+export OPENAI_API_KEY='sk-...'
+
+# 방법 2) .env 파일 — 실행 위치·터미널과 무관하게 읽힘 (cron 에 권장)
+cp .env.example .env
+# .env 를 열어 OPENAI_API_KEY 값을 채웁니다
+```
+
+`.env` 와 `config.json` 은 `.gitignore` 로 커밋에서 제외되어 있습니다. 키는 코드나 `config.example.json` 에 절대 넣지 마세요.
+
 ---
 
 ## 4. 모듈 구조
