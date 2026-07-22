@@ -1,0 +1,70 @@
+{
+  "_comment": "API 키는 이 파일에 절대 넣지 않는다. 환경변수 OPENAI_API_KEY 로만 전달한다.",
+  "http": {
+    "timeout": 10,
+    "delay_sec": 1.0,
+    "max_retries": 3,
+    "backoff_base": 1.6,
+    "user_agent": "Mozilla/5.0 (compatible; NewsPipelineBot/1.0; educational project)",
+    "respect_robots": true
+  },
+  "fetch": {
+    "default_limit": 20,
+    "incremental": true,
+    "seen_guid_cap": 500
+  },
+  "dedup": {
+    "policy": "skip",
+    "dedup_similar": false
+  },
+  "ai": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "temperature": 0.2,
+    "summary_max_chars": 200,
+    "max_articles_per_analysis": 60,
+    "analysis_body_chars": 400
+  },
+  "report": {
+    "top_n": 5
+  },
+  "paths": {
+    "db": "data/news.db",
+    "charts": "output/charts",
+    "reports": "output/reports",
+    "exports": "output/exports",
+    "log": "logs/pipeline.log"
+  },
+  "sources": {
+    "yonhap": {
+      "name": "연합뉴스",
+      "feeds": {
+        "정치": "https://www.yna.co.kr/rss/politics.xml",
+        "경제": "https://www.yna.co.kr/rss/economy.xml",
+        "산업": "https://www.yna.co.kr/rss/industry.xml",
+        "사회": "https://www.yna.co.kr/rss/society.xml",
+        "국제": "https://www.yna.co.kr/rss/international.xml"
+      },
+      "article": {
+        "title_selectors": ["meta[property='og:title']", "h1.tit", "h1"],
+        "body_selectors": ["div.story-news.article", "#articleWrap"],
+        "remove_selectors": [".comp-box", "figure", "script", "style", ".article-txt-ad"]
+      }
+    },
+    "hankyung": {
+      "name": "한국경제",
+      "feeds": {
+        "IT": "https://www.hankyung.com/feed/it",
+        "경제": "https://www.hankyung.com/feed/economy",
+        "금융": "https://www.hankyung.com/feed/finance",
+        "정치": "https://www.hankyung.com/feed/politics",
+        "국제": "https://www.hankyung.com/feed/international"
+      },
+      "article": {
+        "title_selectors": ["h1.headline", "meta[property='og:title']", "h1"],
+        "body_selectors": ["#articletxt", "div.article-body"],
+        "remove_selectors": ["script", "style", ".article-ad", "figure", ".txt-copyright"]
+      }
+    }
+  }
+}

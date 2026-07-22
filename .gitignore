@@ -1,0 +1,21 @@
+# 가상환경
+.venv/
+venv/
+
+# 파이썬
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 비밀정보 · 로컬 설정
+.env
+.env.*
+config.local.json
+
+# 생성물 (재생성 가능)
+data/
+logs/
+output/
+
+# OS
+.DS_Store
