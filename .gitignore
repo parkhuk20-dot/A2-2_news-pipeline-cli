@@ -10,6 +10,7 @@ __pycache__/
 # 비밀정보 · 로컬 설정
 .env
 .env.*
+!.env.example
 config.local.json
 
 # 생성물 (재생성 가능)
