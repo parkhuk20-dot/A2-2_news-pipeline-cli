@@ -218,71 +218,64 @@ src/
 
 ## 6. 정기 실행 스케줄링 (보너스)
 
-### macOS / Linux — cron
+일일 자동 실행용 래퍼 스크립트와 launchd 설정을 `scripts/` 에 포함해 두었습니다.
+
+- `scripts/daily_run.sh` — 프로젝트 루트로 이동해 `run` 을 실행하고 시각을 로그에 남기는 래퍼 (launchd·cron 공용)
+- `scripts/com.codyssey.newspipeline.plist` — macOS launchd 설정 (매일 오전 8시)
+
+API 키는 `.env` 에서 자동으로 읽히므로(§3), 스케줄러 설정에 키를 넣을 필요가 없습니다.
+
+### ⚠️ macOS 사용자 필독 — 프로젝트를 보호된 폴더에 두지 마세요
+
+macOS 는 `~/Desktop`, `~/Documents`, `~/Downloads` 를 TCC(개인정보 보호)로 보호합니다.
+launchd·cron 이 띄우는 백그라운드 프로세스는 이 폴더 접근이 **기본 차단**되어,
+프로젝트가 여기 있으면 자동 실행이 `Operation not permitted` 로 실패합니다.
+(수동 실행은 터미널이 권한을 가지므로 됩니다.)
+
+해결: 프로젝트를 보호되지 않은 경로(예: `~/news-pipeline`)에 두거나,
+시스템 설정 → 개인정보 보호 및 보안 → 전체 디스크 접근 권한에 `/bin/bash` 를 추가하세요.
+
+### macOS — launchd (권장)
+
+```bash
+# plist 안의 경로가 실제 프로젝트 위치와 맞는지 확인 후
+cp scripts/com.codyssey.newspipeline.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.codyssey.newspipeline.plist
+
+# 즉시 한 번 실행해 확인
+launchctl start com.codyssey.newspipeline
+tail -f logs/launchd.log
+
+# 해제
+launchctl unload ~/Library/LaunchAgents/com.codyssey.newspipeline.plist
+```
+
+실행 시각을 바꾸려면 plist 의 `StartCalendarInterval` (Hour/Minute) 을 수정한 뒤 unload → load 하세요.
+
+### macOS / Linux — cron (대안)
 
 ```bash
 crontab -e
 ```
 
 ```cron
-# 매일 오전 8시, 각 소스에서 20건씩 수집 → 정제 → 요약 10건 → 분석 → 리포트
-0 8 * * * cd /Users/sejin/Desktop/codyssey/A2-2 && .venv/bin/python main.py run --source all --limit 20 --summarize-limit 10 >> logs/cron.log 2>&1
-
-# 수집만 3시간마다 (요약·분석은 하루 한 번만 하고 싶을 때)
-0 */3 * * * cd /Users/sejin/Desktop/codyssey/A2-2 && .venv/bin/python main.py fetch --source all --limit 30 >> logs/cron.log 2>&1
+# 매일 오전 8시. 래퍼 스크립트가 경로 이동·로깅을 처리하므로 한 줄로 끝난다.
+0 8 * * * /Users/sejin/news-pipeline/scripts/daily_run.sh >> /Users/sejin/news-pipeline/logs/cron.log 2>&1
 ```
 
-주의할 점
-
-- cron 은 로그인 셸이 아니라 **환경변수가 비어 있습니다.** `OPENAI_API_KEY` 를 crontab 상단에 직접 넣거나,
-  래퍼 스크립트에서 `source ~/.env` 후 실행하세요.
-  ```cron
-  OPENAI_API_KEY=sk-...
-  0 8 * * * cd /path/to/A2-2 && .venv/bin/python main.py run --limit 20 >> logs/cron.log 2>&1
-  ```
-- 반드시 **절대 경로**를 쓰고, 가상환경 파이썬(`.venv/bin/python`)을 직접 지정하세요.
-- macOS 는 cron 에도 디스크 접근 권한이 필요할 수 있습니다: 시스템 설정 → 개인정보 보호 및 보안 → 전체 디스크 접근 권한에 `/usr/sbin/cron` 추가.
+- 반드시 **절대 경로**를 쓰세요. 키는 `.env` 에서 읽히므로 crontab 에 넣지 않아도 됩니다.
+- macOS 는 cron 에도 전체 디스크 접근 권한(`/usr/sbin/cron`)이 필요할 수 있습니다 — 위 TCC 주의 참고.
 - 증분 수집이 켜져 있어 재실행해도 같은 기사를 다시 저장하지 않습니다.
-
-### macOS — launchd (cron 대안, 권장)
-
-`~/Library/LaunchAgents/com.codyssey.newspipeline.plist`
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<plist version="1.0"><dict>
-  <key>Label</key><string>com.codyssey.newspipeline</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/Users/sejin/Desktop/codyssey/A2-2/.venv/bin/python</string>
-    <string>main.py</string><string>run</string><string>--limit</string><string>20</string>
-  </array>
-  <key>WorkingDirectory</key><string>/Users/sejin/Desktop/codyssey/A2-2</string>
-  <key>EnvironmentVariables</key><dict>
-    <key>OPENAI_API_KEY</key><string>sk-...</string>
-  </dict>
-  <key>StartCalendarInterval</key><dict>
-    <key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer>
-  </dict>
-  <key>StandardOutPath</key><string>/Users/sejin/Desktop/codyssey/A2-2/logs/launchd.log</string>
-  <key>StandardErrorPath</key><string>/Users/sejin/Desktop/codyssey/A2-2/logs/launchd.err</string>
-</dict></plist>
-```
-
-```bash
-launchctl load ~/Library/LaunchAgents/com.codyssey.newspipeline.plist
-launchctl start com.codyssey.newspipeline     # 즉시 한 번 실행해 확인
-```
 
 ### Windows — 작업 스케줄러
 
 ```powershell
-schtasks /create /tn "NewsPipeline" /tr "C:\path\to\A2-2\.venv\Scripts\python.exe main.py run --limit 20" /sc daily /st 08:00
+schtasks /create /tn "NewsPipeline" /tr "C:\path\to\news-pipeline\.venv\Scripts\python.exe main.py run --limit 20" /sc daily /st 08:00
 ```
 
 GUI로 만들 때는 [작업 만들기] → [트리거] 매일 08:00 → [동작] 프로그램 시작에
 `.venv\Scripts\python.exe`, 인수 `main.py run --limit 20`, 시작 위치에 프로젝트 폴더를 지정합니다.
-환경변수는 [작업 스케줄러]가 시스템 환경변수를 따르므로 `setx OPENAI_API_KEY "sk-..."` 로 등록해 두세요.
+Windows 에는 TCC 제한이 없어 폴더 위치 제약은 없습니다.
 
 ---
 

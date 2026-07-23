@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  뉴스 파이프라인 일일 자동 실행 (macOS launchd)
+
+  설치:
+    cp scripts/com.codyssey.newspipeline.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.codyssey.newspipeline.plist
+
+  즉시 한 번 실행해 확인:
+    launchctl start com.codyssey.newspipeline
+    tail -f logs/launchd.log
+
+  해제:
+    launchctl unload ~/Library/LaunchAgents/com.codyssey.newspipeline.plist
+
+  * API 키는 프로젝트의 .env 에서 자동으로 읽히므로 이 파일에 키를 넣지 않는다.
+  * 경로는 이 사용자(sejin)의 프로젝트 절대 경로 기준이다. 위치가 바뀌면 아래 경로를 수정한다.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.codyssey.newspipeline</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/sejin/news-pipeline/scripts/daily_run.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/sejin/news-pipeline</string>
+
+    <!-- 매일 오전 8시 0분에 실행 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- 로드 시 즉시 실행하지 않음 (예정된 시각에만) -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/sejin/news-pipeline/logs/launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/sejin/news-pipeline/logs/launchd.log</string>
+</dict>
+</plist>
