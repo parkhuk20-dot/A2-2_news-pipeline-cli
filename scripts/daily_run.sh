@@ -24,8 +24,10 @@ echo "==================================================================="
 echo "[$(date '+%F %T')] 일일 수집 시작 (PROJECT_ROOT=$PROJECT_ROOT)"
 echo "==================================================================="
 
-# 소스별 20건 수집 → 정제 → 미요약분 10건 요약 → 인사이트 → 리포트
-"$PYTHON" main.py run --source all --limit 20 --summarize-limit 10
+# 소스별 20건 수집 → 정제 → 미요약분 요약 → 인사이트 → 리포트
+# summarize-limit 은 하루 수집량(소스별 20 × 2 = 최대 40건)보다 넉넉히 잡아,
+# 하루라도 수집이 많거나 자동 실행이 걸러도 요약이 밀리지 않게 한다.
+"$PYTHON" main.py run --source all --limit 20 --summarize-limit 60
 STATUS=$?
 
 echo "[$(date '+%F %T')] 종료 (exit=$STATUS)"
