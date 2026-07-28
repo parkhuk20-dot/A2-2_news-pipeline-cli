@@ -140,6 +140,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--id", type=int, required=True, help="기사 ID")
     p.add_argument("--full", action="store_true", help="본문 전문 출력")
 
+    # --- status --------------------------------------------------------
+    p = sub.add_parser("status", parents=[common], help="파이프라인 건강 상태 점검")
+    p.add_argument("--check", action="store_true",
+                   help="문제가 있으면 종료코드 1 (스크립트/알림 연동용)")
+
     return parser
 
 
@@ -200,6 +205,12 @@ def cmd_show(args: argparse.Namespace, cfg: Config) -> int:
     return run_show(args, cfg)
 
 
+def cmd_status(args: argparse.Namespace, cfg: Config) -> int:
+    from .status import run_status
+
+    return run_status(args, cfg)
+
+
 HANDLERS: dict[str, Callable[[argparse.Namespace, Config], int]] = {
     "fetch": cmd_fetch,
     "clean": cmd_clean,
@@ -210,6 +221,7 @@ HANDLERS: dict[str, Callable[[argparse.Namespace, Config], int]] = {
     "run": cmd_run,
     "list": cmd_list,
     "show": cmd_show,
+    "status": cmd_status,
 }
 
 

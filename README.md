@@ -52,6 +52,7 @@ python main.py run --source all --limit 10 --mock
 | `run` | 위 단계 일괄 실행 | `--source` `--limit` `--summarize-limit` `--dedup` `--mock` `--skip-fetch` |
 | `list` *(보너스)* | 뉴스 목록 조회 | `--category` `--source` `--date` `--keyword` `--status` `--page` `--page-size` |
 | `show` *(보너스)* | 뉴스 상세 조회 | `--id` `--full` |
+| `status` | 파이프라인 건강 상태 점검 | `--check` |
 
 공통 옵션: `--config <경로>` (기본 `config.json`), `--verbose` (DEBUG 로그)
 
@@ -279,7 +280,30 @@ Windows 에는 TCC 제한이 없어 폴더 위치 제약은 없습니다.
 
 ---
 
-## 7. 문제 해결
+## 7. 상태 점검 · 모니터링
+
+자동 실행이 조용히 실패하거나 요약이 밀리는 것을 놓치지 않도록 상태 점검 수단을 두었습니다.
+
+```bash
+python main.py status          # 한 화면 헬스 대시보드
+python main.py status --check  # 문제가 있으면 종료코드 1 (스크립트 연동용)
+```
+
+`status` 가 보여주는 것:
+
+- **자동 실행**: 마지막 실행 시각·성패 (`logs/last_run.txt` 기반), 오늘 실행 누락 여부
+- **오늘 수집**: 오늘 수집된 기사 수 (실제 수집 시각 기준)
+- **파이프라인 단계**: raw / clean / 요약 건수와 커버리지, 정제·요약 대기 건수
+- **최근 수집 추이**: 최근 5일 막대
+- **AI 인사이트**: 마지막 분석 시각
+- 문제가 있으면 하단에 **경고 + 다음 조치 명령**을 모아 보여줍니다.
+
+**실패 알림**: `scripts/daily_run.sh` 는 실행 결과를 `logs/last_run.txt` 에 기록하고,
+실패 시(네트워크 미준비·파이프라인 오류) **macOS 알림**을 띄웁니다. (Linux/cron 에서는 알림만 조용히 생략)
+
+---
+
+## 8. 문제 해결
 
 | 증상 | 원인 / 해결 |
 |---|---|

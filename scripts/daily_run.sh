@@ -15,8 +15,23 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT" || { echo "프로젝트 루트로 이동 실패: $PROJECT_ROOT"; exit 1; }
 
 PYTHON="$PROJECT_ROOT/.venv/bin/python"
+LAST_RUN_FILE="$PROJECT_ROOT/logs/last_run.txt"
+mkdir -p "$PROJECT_ROOT/logs"
+
+# 실행 결과를 상태 파일에 남기고, 실패면 macOS 알림을 띄운다.
+# status 커맨드가 이 파일을 읽어 "마지막 자동 실행 성패"를 보여준다.
+report_status() {
+    local code="$1" msg="$2"
+    echo "$(date '+%F %T')|${code}" > "$LAST_RUN_FILE"
+    if [ "$code" -ne 0 ]; then
+        # macOS 알림 (Linux/cron 에서는 osascript 가 없으므로 조용히 무시)
+        osascript -e "display notification \"${msg}\" with title \"뉴스 파이프라인\" subtitle \"자동 실행 실패\" sound name \"Basso\"" 2>/dev/null || true
+    fi
+}
+
 if [ ! -x "$PYTHON" ]; then
     echo "[$(date '+%F %T')] 가상환경 파이썬을 찾을 수 없음: $PYTHON"
+    report_status 1 "가상환경 파이썬을 찾을 수 없습니다"
     exit 1
 fi
 
@@ -36,6 +51,7 @@ for attempt in $(seq 1 30); do
     fi
     if [ "$attempt" -eq 30 ]; then
         echo "[$(date '+%F %T')] 네트워크가 준비되지 않아 중단 (다음 예약 실행에서 재시도)"
+        report_status 1 "네트워크(DNS) 미준비로 수집을 시작하지 못했습니다"
         exit 1
     fi
     sleep 10
@@ -47,6 +63,7 @@ done
 "$PYTHON" main.py run --source all --limit 20 --summarize-limit 60
 STATUS=$?
 
+report_status "$STATUS" "파이프라인 실행 중 오류가 발생했습니다 (logs/launchd.log 확인)"
 echo "[$(date '+%F %T')] 종료 (exit=$STATUS)"
 echo ""
 exit $STATUS
