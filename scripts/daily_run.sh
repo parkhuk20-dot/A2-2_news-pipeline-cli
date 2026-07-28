@@ -24,6 +24,23 @@ echo "==================================================================="
 echo "[$(date '+%F %T')] 일일 수집 시작 (PROJECT_ROOT=$PROJECT_ROOT)"
 echo "==================================================================="
 
+# 네트워크(DNS) 준비 대기
+# 맥이 절전에서 막 깨어나 예약 시각(오전 8시)에 실행되면, DNS 가 아직 안 올라와
+# 전 피드가 "Failed to resolve" 로 실패하는 일이 있었다(2026-07-27, 07-28).
+# 뉴스 서버 이름이 실제로 풀릴 때까지 최대 약 5분간 기다렸다가 진행한다.
+NET_HOST="www.yna.co.kr"
+for attempt in $(seq 1 30); do
+    if curl -s -m 5 -o /dev/null "https://$NET_HOST/robots.txt"; then
+        echo "[$(date '+%F %T')] 네트워크 준비됨 ($NET_HOST, ${attempt}회째)"
+        break
+    fi
+    if [ "$attempt" -eq 30 ]; then
+        echo "[$(date '+%F %T')] 네트워크가 준비되지 않아 중단 (다음 예약 실행에서 재시도)"
+        exit 1
+    fi
+    sleep 10
+done
+
 # 소스별 20건 수집 → 정제 → 미요약분 요약 → 인사이트 → 리포트
 # summarize-limit 은 하루 수집량(소스별 20 × 2 = 최대 40건)보다 넉넉히 잡아,
 # 하루라도 수집이 많거나 자동 실행이 걸러도 요약이 밀리지 않게 한다.
