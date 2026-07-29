@@ -90,6 +90,15 @@ CREATE TABLE IF NOT EXISTS fetch_state (
     updated_at   TEXT,
     PRIMARY KEY (source, feed)
 );
+
+-- 6) 임베딩 캐시: 이벤트 클러스터링용 벡터를 재계산 없이 재사용한다.
+CREATE TABLE IF NOT EXISTS embeddings (
+    article_id INTEGER UNIQUE NOT NULL REFERENCES clean_articles(id),
+    model      TEXT,
+    dim        INTEGER,
+    vector     TEXT,                     -- JSON 실수 배열
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -469,6 +478,38 @@ class Database:
                 """
             ).fetchall()
         return [(r["grp"], r["sent"], r["n"]) for r in rows]
+
+    # ------------------------------------------------------------------
+    # 임베딩 캐시 (클러스터링)
+    # ------------------------------------------------------------------
+    def get_embeddings(self, article_ids: Sequence[int], model: str) -> dict[int, list[float]]:
+        """캐시된 임베딩을 {article_id: vector} 로. 같은 모델 것만 반환한다."""
+        if not article_ids:
+            return {}
+        placeholders = ",".join("?" * len(article_ids))
+        rows = self.conn.execute(
+            f"SELECT article_id, vector FROM embeddings "
+            f"WHERE model = ? AND article_id IN ({placeholders})",
+            [model, *article_ids],
+        ).fetchall()
+        return {r["article_id"]: json.loads(r["vector"]) for r in rows}
+
+    def save_embeddings(self, items: Iterable[tuple[int, list[float]]], model: str) -> None:
+        rows = [
+            (aid, model, len(vec), json.dumps(vec), now_iso())
+            for aid, vec in items
+        ]
+        self.conn.executemany(
+            """
+            INSERT INTO embeddings (article_id, model, dim, vector, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(article_id) DO UPDATE SET
+                model=excluded.model, dim=excluded.dim,
+                vector=excluded.vector, created_at=excluded.created_at
+            """,
+            rows,
+        )
+        self.conn.commit()
 
     def quality_metrics(self) -> dict[str, Any]:
         raw = self.count_raw()

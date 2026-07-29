@@ -157,8 +157,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--date-from", default=None, help="시작일 YYYY-MM-DD")
     p.add_argument("--date-to", default=None, help="종료일 YYYY-MM-DD")
     p.add_argument("--category", default=None, help="카테고리 필터")
-    p.add_argument("--threshold", type=float, default=0.55,
-                   help="같은 이벤트로 묶을 코사인 유사도 임계값 (0~1)")
+    p.add_argument("--threshold", type=float, default=0.45,
+                   help="같은 이벤트로 묶을 코사인 유사도 임계값 (0~1, 낮을수록 넓게 묶임)")
     p.add_argument("--min-sources", type=int, default=2,
                    help="이 개수 이상 언론사가 다룬 이벤트만 표시")
     p.add_argument("--top-n", type=int, default=10, help="표시할 이벤트 수")

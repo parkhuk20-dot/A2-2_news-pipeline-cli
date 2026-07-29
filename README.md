@@ -53,6 +53,8 @@ python main.py run --source all --limit 10 --mock
 | `list` *(보너스)* | 뉴스 목록 조회 | `--category` `--source` `--date` `--keyword` `--status` `--page` `--page-size` |
 | `show` *(보너스)* | 뉴스 상세 조회 | `--id` `--full` |
 | `status` | 파이프라인 건강 상태 점검 | `--check` |
+| `trends` | 키워드 시계열 + 신규·급상승 브리핑 | `--days` `--top-n` `--no-chart` |
+| `cluster` | 유사 기사 이벤트 묶음 + 언론사 논조 비교 | `--date-from/to` `--category` `--threshold` `--min-sources` `--top-n` `--mock` |
 
 공통 옵션: `--config <경로>` (기본 `config.json`), `--verbose` (DEBUG 로그)
 
@@ -280,7 +282,51 @@ Windows 에는 TCC 제한이 없어 폴더 위치 제약은 없습니다.
 
 ---
 
-## 7. 상태 점검 · 모니터링
+## 7. 심화 분석 — 키워드 트렌드 · 이벤트 클러스터링
+
+### `trends` — 키워드 시계열
+
+날짜별 제목 키워드를 집계해 **뜨고 지는 흐름**을 보여줍니다. AI 호출 없는 순수 집계라 항상 동작합니다.
+
+```bash
+python main.py trends --days 7
+```
+
+- 오늘 많이 나온 키워드
+- **🆕 새로 등장한 키워드** (이전 기간엔 없다가 오늘 나타남)
+- **📈 급상승 키워드** (이전 일평균 대비 급증)
+- 상위 키워드의 날짜별 언급 추이 다중 선그래프 (`output/charts/keyword_timeline.png`)
+
+### `cluster` — 이벤트 클러스터링 + 언론사 논조 비교
+
+제목 글자 일치(`title_hash`)로는 못 잡는 "같은 사건을 다르게 표현한 기사"를,
+**임베딩(의미 벡터)의 코사인 유사도**로 묶습니다. 하나의 이벤트가 여러 언론사에 걸치면
+**같은 사안을 언론사별로 어떤 논조(감성)로 다뤘는지** 비교합니다.
+
+```bash
+python main.py cluster --date-from 2026-07-27 --date-to 2026-07-28
+python main.py cluster --threshold 0.45 --min-sources 2   # 임계값↓ = 더 넓게 묶임
+python main.py cluster --mock                              # 임베딩 API 없이 오프라인(해싱 벡터)
+```
+
+출력 예시 — 같은 사건인데 경제지와 통신사의 논조가 갈리는 게 드러납니다:
+
+```
+[이벤트 1] 기사 12건 · 언론사 2곳 · 2026-07-27~2026-07-28
+  대표: AI깐부 맞네...엔비디아, 네이버 3대주주로
+  논조 비교:
+    - hankyung : 중립 4, 긍정 7
+    - yonhap   : 중립 1
+  → 논조 갈림: 긍정 7건 vs 중립 5건
+```
+
+- 알고리즘: 임계값 기반 그리디 응집 클러스터링 (numpy, 외부 ML 라이브러리 불필요)
+- 임베딩은 `text-embedding-3-small` (1536차원), **DB 에 캐시**해 재실행 시 재계산하지 않음
+- `--mock` 은 문자 n-gram 해싱 벡터로 오프라인 시연 (표면적 유사도)
+
+---
+
+## 8. 상태 점검 · 모니터링
 
 자동 실행이 조용히 실패하거나 요약이 밀리는 것을 놓치지 않도록 상태 점검 수단을 두었습니다.
 
@@ -303,7 +349,7 @@ python main.py status --check  # 문제가 있으면 종료코드 1 (스크립�
 
 ---
 
-## 8. 문제 해결
+## 9. 문제 해결
 
 | 증상 | 원인 / 해결 |
 |---|---|
