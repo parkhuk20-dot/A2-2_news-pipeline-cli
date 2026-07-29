@@ -145,6 +145,26 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--check", action="store_true",
                    help="문제가 있으면 종료코드 1 (스크립트/알림 연동용)")
 
+    # --- trends --------------------------------------------------------
+    p = sub.add_parser("trends", parents=[common], help="키워드 시계열 + 신규·급상승 브리핑")
+    p.add_argument("--days", type=int, default=7, help="집계 기간(일), 0=전체")
+    p.add_argument("--top-n", type=int, default=None, help="키워드 개수")
+    p.add_argument("--no-chart", action="store_true", help="시계열 차트 생략")
+
+    # --- cluster -------------------------------------------------------
+    p = sub.add_parser("cluster", parents=[common],
+                       help="유사 기사를 이벤트로 묶고 언론사별 논조 비교")
+    p.add_argument("--date-from", default=None, help="시작일 YYYY-MM-DD")
+    p.add_argument("--date-to", default=None, help="종료일 YYYY-MM-DD")
+    p.add_argument("--category", default=None, help="카테고리 필터")
+    p.add_argument("--threshold", type=float, default=0.55,
+                   help="같은 이벤트로 묶을 코사인 유사도 임계값 (0~1)")
+    p.add_argument("--min-sources", type=int, default=2,
+                   help="이 개수 이상 언론사가 다룬 이벤트만 표시")
+    p.add_argument("--top-n", type=int, default=10, help="표시할 이벤트 수")
+    p.add_argument("--limit", type=int, default=None, help="대상 기사 최대 수")
+    p.add_argument("--mock", action="store_true", help="임베딩 API 없이 오프라인 벡터 사용")
+
     return parser
 
 
@@ -211,6 +231,18 @@ def cmd_status(args: argparse.Namespace, cfg: Config) -> int:
     return run_status(args, cfg)
 
 
+def cmd_trends(args: argparse.Namespace, cfg: Config) -> int:
+    from .trends import run_trends
+
+    return run_trends(args, cfg)
+
+
+def cmd_cluster(args: argparse.Namespace, cfg: Config) -> int:
+    from .ai.cluster import run_cluster
+
+    return run_cluster(args, cfg)
+
+
 HANDLERS: dict[str, Callable[[argparse.Namespace, Config], int]] = {
     "fetch": cmd_fetch,
     "clean": cmd_clean,
@@ -222,6 +254,8 @@ HANDLERS: dict[str, Callable[[argparse.Namespace, Config], int]] = {
     "list": cmd_list,
     "show": cmd_show,
     "status": cmd_status,
+    "trends": cmd_trends,
+    "cluster": cmd_cluster,
 }
 
 
