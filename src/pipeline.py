@@ -99,7 +99,10 @@ def run_all(args: argparse.Namespace, cfg: Config) -> int:
     step += 1
     _banner(step, steps, "리포트 (report)")
     code = run_report(
-        Namespace(format=args.format, top_n=None, no_charts=False, output=None),
+        Namespace(
+            format=args.format, top_n=None, no_charts=False, output=None,
+            no_trends=False, no_cluster=False, mock=args.mock,
+        ),
         cfg,
     )
     if code != 0:

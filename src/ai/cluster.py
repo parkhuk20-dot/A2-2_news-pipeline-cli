@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 
 import numpy as np
 
@@ -65,6 +66,86 @@ def _representative(idxs: list[int], vectors: np.ndarray, rows: list) -> int:
     return best_i
 
 
+def compute_events(
+    db: Database,
+    embedder: Embedder,
+    *,
+    date_from: str | None,
+    date_to: str | None,
+    category: str | None,
+    threshold: float,
+    min_sources: int,
+    limit: int,
+) -> dict:
+    """클러스터링을 수행해 구조화된 결과를 돌려준다 (콘솔 출력·리포트 공용).
+
+    반환: {"n_articles", "n_clusters", "min_sources", "events": [event, ...]}
+    event = {"size", "rep_title", "span", "by_source": {src: {라벨:수}}, "tone"}
+    """
+    rows = db.query_articles(
+        category=category, date_from=date_from, date_to=date_to, limit=limit
+    )
+    if len(rows) < 2:
+        return {"n_articles": len(rows), "n_clusters": 0, "min_sources": min_sources, "events": []}
+
+    ids = [r["id"] for r in rows]
+    cached = db.get_embeddings(ids, embedder.model)
+    missing = [(idx, r) for idx, r in enumerate(rows) if r["id"] not in cached]
+    if missing:
+        log.info("임베딩 신규 생성: %d건 (캐시 %d건 재사용)", len(missing), len(cached))
+        new_vecs = embedder.embed([_text_for(r) for _, r in missing])
+        db.save_embeddings(
+            ((r["id"], vec) for (_, r), vec in zip(missing, new_vecs)), embedder.model
+        )
+        for (_, r), vec in zip(missing, new_vecs):
+            cached[r["id"]] = vec
+    else:
+        log.info("임베딩 전부 캐시 재사용 (%d건)", len(cached))
+
+    vectors = np.array([cached[r["id"]] for r in rows], dtype=float)
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    vectors = vectors / np.where(norms == 0, 1, norms)
+
+    groups = _greedy_cluster(vectors, threshold)
+    multi = [idxs for idxs in groups if len({rows[i]["source"] for i in idxs}) >= min_sources]
+    multi.sort(key=len, reverse=True)
+
+    events = []
+    for idxs in multi:
+        members = [rows[i] for i in idxs]
+        rep = rows[_representative(idxs, vectors, rows)]
+        dates = sorted(m["published_at"] for m in members if m["published_at"])
+        span = "" if not dates else (dates[0] if dates[0] == dates[-1] else f"{dates[0]}~{dates[-1]}")
+
+        by_source: dict[str, dict[str, int]] = {}
+        for m in members:
+            label = to_korean(m["sentiment"] or "unknown")
+            by_source.setdefault(m["source"], Counter())[label] += 1
+        by_source = {s: dict(c) for s, c in by_source.items()}
+
+        overall = Counter(to_korean(m["sentiment"] or "unknown") for m in members)
+        if len(overall) > 1 and overall.most_common(1)[0][1] < len(members):
+            t2 = overall.most_common(2)
+            tone = f"논조 갈림: {t2[0][0]} {t2[0][1]}건 vs {t2[1][0]} {t2[1][1]}건"
+        else:
+            tone = f"논조 일치: 대체로 '{overall.most_common(1)[0][0]}'"
+
+        events.append({
+            "size": len(members),
+            "rep_title": rep["title"],
+            "span": span,
+            "by_source": by_source,
+            "tone": tone,
+        })
+
+    return {
+        "n_articles": len(rows),
+        "n_clusters": len(groups),
+        "min_sources": min_sources,
+        "events": events,
+    }
+
+
 def run_cluster(args: argparse.Namespace, cfg: Config) -> int:
     limit = args.limit or cfg.ai.get("max_articles_per_analysis", 60) * 5
 
@@ -74,91 +155,38 @@ def run_cluster(args: argparse.Namespace, cfg: Config) -> int:
         log.error("%s", e)
         return 2
 
+    log.info("클러스터링 시작 (모델=%s, 임계값=%.2f)", embedder.model, args.threshold)
     with Database(cfg.path_for("db")) as db:
-        rows = db.query_articles(
-            category=args.category,
-            date_from=args.date_from,
-            date_to=args.date_to,
-            limit=limit,
+        result = compute_events(
+            db, embedder,
+            date_from=args.date_from, date_to=args.date_to, category=args.category,
+            threshold=args.threshold, min_sources=args.min_sources, limit=limit,
         )
-        if len(rows) < 2:
-            log.warning("클러스터링할 기사가 부족합니다 (%d건).", len(rows))
-            return 0
 
-        log.info("클러스터링 대상: %d건 (모델=%s, 임계값=%.2f)", len(rows), embedder.model, args.threshold)
+    if result["n_articles"] < 2:
+        log.warning("클러스터링할 기사가 부족합니다 (%d건).", result["n_articles"])
+        return 0
 
-        # --- 임베딩 (캐시 우선) ---------------------------------------
-        ids = [r["id"] for r in rows]
-        cached = db.get_embeddings(ids, embedder.model)
-        missing = [(idx, r) for idx, r in enumerate(rows) if r["id"] not in cached]
-        if missing:
-            log.info("임베딩 신규 생성: %d건 (캐시 %d건 재사용)", len(missing), len(cached))
-            new_vecs = embedder.embed([_text_for(r) for _, r in missing])
-            db.save_embeddings(
-                ((r["id"], vec) for (_, r), vec in zip(missing, new_vecs)), embedder.model
-            )
-            for (_, r), vec in zip(missing, new_vecs):
-                cached[r["id"]] = vec
-        else:
-            log.info("임베딩 전부 캐시 재사용 (%d건)", len(cached))
-
-        vectors = np.array([cached[r["id"]] for r in rows], dtype=float)
-        # 안전하게 정규화 (내적=코사인 전제)
-        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-        vectors = vectors / np.where(norms == 0, 1, norms)
-
-        # --- 클러스터링 ----------------------------------------------
-        groups = _greedy_cluster(vectors, args.threshold)
-
-        # 언론사 2곳 이상이 다룬 이벤트만
-        events = []
-        for idxs in groups:
-            sources = {rows[i]["source"] for i in idxs}
-            if len(sources) >= args.min_sources:
-                events.append(idxs)
-        events.sort(key=len, reverse=True)
-
-    total_multi = len(events)
+    events = result["events"]
     print()
     print("=" * 60)
-    print(f" 이벤트 클러스터 — {len(rows)}건에서 {len(groups)}개 묶음, "
-          f"{args.min_sources}개+ 언론사 교차 이벤트 {total_multi}개")
+    print(f" 이벤트 클러스터 — {result['n_articles']}건에서 {result['n_clusters']}개 묶음, "
+          f"{result['min_sources']}개+ 언론사 교차 이벤트 {len(events)}개")
     print("=" * 60)
 
     if not events:
-        print(f"\n{args.min_sources}개 이상 언론사가 함께 다룬 이벤트가 없습니다.")
+        print(f"\n{result['min_sources']}개 이상 언론사가 함께 다룬 이벤트가 없습니다.")
         print("(--threshold 를 낮추거나 --min-sources 1 로 넓혀보세요)\n")
         return 0
 
-    for rank, idxs in enumerate(events[: args.top_n], start=1):
-        members = [rows[i] for i in idxs]
-        rep = rows[_representative(idxs, vectors, rows)]
-        dates = sorted(m["published_at"] for m in members if m["published_at"])
-        span = dates[0] if not dates else (dates[0] if dates[0] == dates[-1] else f"{dates[0]}~{dates[-1]}")
-
-        # 언론사별 논조 집계
-        by_source: dict[str, list[str]] = {}
-        for m in members:
-            by_source.setdefault(m["source"], []).append(m["sentiment"] or "unknown")
-
-        print(f"\n[이벤트 {rank}] 기사 {len(members)}건 · 언론사 {len(by_source)}곳 · {span}")
-        print(f"  대표: {rep['title']}")
+    for rank, ev in enumerate(events[: args.top_n], start=1):
+        print(f"\n[이벤트 {rank}] 기사 {ev['size']}건 · 언론사 {len(ev['by_source'])}곳 · {ev['span']}")
+        print(f"  대표: {ev['rep_title']}")
         print("  논조 비교:")
-        for src, sents in by_source.items():
-            from collections import Counter
-            dist = Counter(to_korean(s) for s in sents)
+        for src, dist in ev["by_source"].items():
             dist_str = ", ".join(f"{k} {v}" for k, v in dist.items())
             print(f"    - {src:9s}: {dist_str}")
-
-        # 논조 갈림 여부 한 줄 요약
-        overall = [to_korean(s) for m in members for s in [m["sentiment"] or "unknown"]]
-        from collections import Counter
-        oc = Counter(overall)
-        if len(oc) > 1 and oc.most_common(1)[0][1] < len(overall):
-            top2 = oc.most_common(2)
-            print(f"  → 논조 갈림: {top2[0][0]} {top2[0][1]}건 vs {top2[1][0]} {top2[1][1]}건")
-        else:
-            print(f"  → 논조 일치: 대체로 '{oc.most_common(1)[0][0]}'")
+        print(f"  → {ev['tone']}")
 
     print()
     log.info("클러스터 분석 완료")

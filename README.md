@@ -47,7 +47,7 @@ python main.py run --source all --limit 10 --mock
 | `clean` | 검증·정규화·중복 처리 → clean 저장 | `--dedup {skip,upsert}` `--dedup-similar` `--min-body` |
 | `summarize` | AI 요약 + 감성 분석 | `--all` `--id` `--unsummarized` `--limit` `--category` `--no-sentiment` `--mock` |
 | `analyze` | 기간·카테고리 종합 인사이트 | `--date-from` `--date-to` `--category` `--limit` `--mock` |
-| `report` | 품질지표·TOP N·인사이트·차트 리포트 | `--format {txt,md}` `--top-n` `--no-charts` `--output` |
+| `report` | 품질지표·TOP N·인사이트·**키워드 트렌드·이벤트 논조**·차트 리포트 | `--format {txt,md}` `--top-n` `--no-charts` `--no-trends` `--no-cluster` `--mock` `--output` |
 | `export` | CSV / Excel 내보내기 | `--format {csv,xlsx}` `--status` `--category` `--date-from/to` `--output` |
 | `run` | 위 단계 일괄 실행 | `--source` `--limit` `--summarize-limit` `--dedup` `--mock` `--skip-fetch` |
 | `list` *(보너스)* | 뉴스 목록 조회 | `--category` `--source` `--date` `--keyword` `--status` `--page` `--page-size` |
@@ -323,6 +323,12 @@ python main.py cluster --mock                              # 임베딩 API 없�
 - 알고리즘: 임계값 기반 그리디 응집 클러스터링 (numpy, 외부 ML 라이브러리 불필요)
 - 임베딩은 `text-embedding-3-small` (1536차원), **DB 에 캐시**해 재실행 시 재계산하지 않음
 - `--mock` 은 문자 n-gram 해싱 벡터로 오프라인 시연 (표면적 유사도)
+
+### 리포트 통합
+
+`trends`·`cluster` 결과는 `report` 에도 자동 포함됩니다 (5절 키워드 트렌드, 6절 이벤트 논조 비교).
+따라서 일일 자동 실행(`run`)이 만드는 리포트에도 매일 반영됩니다.
+클러스터 섹션은 임베딩 키가 없으면 조용히 생략되고, `--no-trends`·`--no-cluster` 로 끌 수 있습니다.
 
 ---
 

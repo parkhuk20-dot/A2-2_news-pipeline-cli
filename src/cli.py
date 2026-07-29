@@ -100,6 +100,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--format", choices=["txt", "md"], default="md", help="저장 형식")
     p.add_argument("--top-n", type=int, default=None, help="TOP N 집계 개수")
     p.add_argument("--no-charts", action="store_true", help="차트 생성 생략")
+    p.add_argument("--no-trends", action="store_true", help="키워드 트렌드 섹션 생략")
+    p.add_argument("--no-cluster", action="store_true", help="이벤트 클러스터·논조 섹션 생략")
+    p.add_argument("--mock", action="store_true", help="클러스터 임베딩을 오프라인(mock)으로")
     p.add_argument("--output", default=None, help="저장 경로 직접 지정")
 
     # --- export -------------------------------------------------------

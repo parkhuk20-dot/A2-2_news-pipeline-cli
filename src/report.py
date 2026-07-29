@@ -36,7 +36,15 @@ def top_keywords(db: Database, top_n: int) -> list[tuple[str, int]]:
     return counter.most_common(top_n)
 
 
-def build_report(db: Database, *, top_n: int, charts: list[Path], as_markdown: bool) -> str:
+def build_report(
+    db: Database,
+    *,
+    top_n: int,
+    charts: list[Path],
+    as_markdown: bool,
+    trends_data: dict | None = None,
+    cluster_data: dict | None = None,
+) -> str:
     metrics = db.quality_metrics()
     categories = db.category_counts()[:top_n]
     keywords = top_keywords(db, top_n)
@@ -122,8 +130,45 @@ def build_report(db: Database, *, top_n: int, charts: list[Path], as_markdown: b
         lines.append(f"{bullet}저장된 인사이트가 없습니다. `python main.py analyze` 를 먼저 실행하세요.")
         lines.append("")
 
+    # --- 키워드 트렌드 -------------------------------------------------
+    if trends_data:
+        lines.append(f"{h2}5. 키워드 트렌드")
+        lines.append("")
+        brief = trends_data
+        if brief.get("new"):
+            lines.append(f"{bullet}🆕 새로 등장: " + ", ".join(f"{kw}({c})" for kw, c in brief["new"]))
+        if brief.get("rising"):
+            lines.append(f"{bullet}📈 급상승: " +
+                         ", ".join(f"{kw}({c}회, 이전 평균 {avg})" for kw, c, avg in brief["rising"]))
+        if not brief.get("new") and not brief.get("rising"):
+            lines.append(f"{bullet}뚜렷한 신규·급상승 키워드 없음 ({brief.get('today', '')})")
+        lines.append("")
+
+    # --- 이벤트 클러스터 · 논조 비교 -----------------------------------
+    if cluster_data:
+        lines.append(f"{h2}6. 이벤트 클러스터 · 언론사 논조 비교")
+        lines.append("")
+        events = cluster_data.get("events", [])
+        if events:
+            lines.append(f"{bullet}{cluster_data['n_articles']}건에서 "
+                         f"{cluster_data['min_sources']}개+ 언론사가 함께 다룬 이벤트 {len(events)}개")
+            lines.append("")
+            for rank, ev in enumerate(events, start=1):
+                srcs = "; ".join(
+                    f"{s}({', '.join(f'{k} {v}' for k, v in dist.items())})"
+                    for s, dist in ev["by_source"].items()
+                )
+                lines.append(f"{h2 and '### ' or ''}이벤트 {rank}: {ev['rep_title']}")
+                lines.append(f"{bullet}기사 {ev['size']}건 · {ev['span']}")
+                lines.append(f"{bullet}논조: {srcs}")
+                lines.append(f"{bullet}→ {ev['tone']}")
+                lines.append("")
+        else:
+            lines.append(f"{bullet}여러 언론사가 함께 다룬 이벤트가 없습니다.")
+            lines.append("")
+
     # --- 차트 ---------------------------------------------------------
-    lines.append(f"{h2}5. 차트")
+    lines.append(f"{h2}7. 차트")
     lines.append("")
     if charts:
         for path in charts:
@@ -138,6 +183,42 @@ def build_report(db: Database, *, top_n: int, charts: list[Path], as_markdown: b
     return "\n".join(lines)
 
 
+def _gather_trends(db: Database, cfg: Config, top_n: int) -> dict | None:
+    """리포트용 트렌드 브리핑 데이터 (AI 불필요). 실패해도 리포트는 계속."""
+    try:
+        from .trends import _briefing, chart_keyword_timeline, collect_daily_keywords
+
+        window, per_day = collect_daily_keywords(db, days=7)
+        if not window:
+            return None
+        chart_keyword_timeline(window, per_day, max(top_n, 6), cfg.path_for("charts"))
+        return _briefing(window, per_day, top_n)
+    except Exception as e:
+        log.warning("트렌드 집계 생략: %s", e)
+        return None
+
+
+def _gather_cluster(db: Database, cfg: Config, args: argparse.Namespace) -> dict | None:
+    """리포트용 클러스터 데이터. 임베딩 키가 없으면(mock 아님) 조용히 생략."""
+    try:
+        from .ai.cluster import compute_events
+        from .ai.embeddings import Embedder
+
+        embedder = Embedder(cfg, mock=getattr(args, "mock", False))
+        limit = cfg.ai.get("max_articles_per_analysis", 60) * 5
+        return compute_events(
+            db, embedder,
+            date_from=None, date_to=None, category=None,
+            threshold=0.45, min_sources=2, limit=limit,
+        )
+    except RuntimeError as e:
+        log.info("클러스터 섹션 생략 (%s)", e)
+        return None
+    except Exception as e:
+        log.warning("클러스터 분석 생략: %s", e)
+        return None
+
+
 def run_report(args: argparse.Namespace, cfg: Config) -> int:
     top_n = args.top_n or cfg.report.get("top_n", 5)
 
@@ -147,10 +228,26 @@ def run_report(args: argparse.Namespace, cfg: Config) -> int:
             return 0
 
         charts: list[Path] = []
+        trends_data = None
         if not args.no_charts:
             charts = generate_all(db, cfg.path_for("charts"))
 
-        content = build_report(db, top_n=top_n, charts=charts, as_markdown=(args.format == "md"))
+        if not getattr(args, "no_trends", False):
+            trends_data = _gather_trends(db, cfg, top_n)
+
+        cluster_data = None
+        if not getattr(args, "no_cluster", False):
+            cluster_data = _gather_cluster(db, cfg, args)
+
+        # 트렌드 차트가 생성됐으면 차트 목록에 포함
+        timeline = cfg.path_for("charts", ensure_parent=False) / "keyword_timeline.png"
+        if trends_data and timeline.exists() and timeline not in charts:
+            charts.append(timeline)
+
+        content = build_report(
+            db, top_n=top_n, charts=charts, as_markdown=(args.format == "md"),
+            trends_data=trends_data, cluster_data=cluster_data,
+        )
 
     print()
     print(content)
