@@ -170,10 +170,18 @@ src/
 │   ├── analyze.py            인사이트 분석
 │   └── sentiment.py          [보너스] 감성 라벨 처리
 ├── visualize.py              matplotlib 차트 3종 (한글 폰트)
-├── report.py                 품질지표·TOP N·리포트
+├── report.py                 품질지표·TOP N·트렌드·논조·리포트
 ├── exporter.py               CSV / Excel
 ├── viewer.py                 [보너스] list / show
+├── status.py                 헬스 대시보드
+├── trends.py                 키워드 시계열 브리핑
+├── ai/embeddings.py          임베딩(OpenAI + mock)
+├── ai/cluster.py             이벤트 클러스터링 + 논조 비교
 └── pipeline.py               run 오케스트레이션
+
+tests/                        pytest 단위 테스트 (cleaner·config·db·retry·collectors·ai·trends)
+scripts/                      launchd 자동 실행 (daily_run.sh, plist)
+.github/workflows/ci.yml      GitHub Actions CI (테스트 + mock 스모크)
 ```
 
 ### 데이터 저장 (SQLite, `data/news.db`)
@@ -355,7 +363,22 @@ python main.py status --check  # 문제가 있으면 종료코드 1 (스크립�
 
 ---
 
-## 9. 문제 해결
+## 9. 테스트 · CI
+
+순수 로직(정제·중복·날짜 정규화·재시도·RSS 파싱·클러스터링 등)을 pytest 로 검증합니다.
+네트워크·API 없이 도는 테스트라 빠르고, DB 테스트는 임시 파일 DB를 씁니다.
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
+
+푸시·PR 마다 **GitHub Actions**(`.github/workflows/ci.yml`)가 Python 3.10·3.12 에서
+단위 테스트 + `run --mock` 스모크를 자동 실행합니다.
+
+---
+
+## 10. 문제 해결
 
 | 증상 | 원인 / 해결 |
 |---|---|
