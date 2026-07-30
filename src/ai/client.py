@@ -31,6 +31,9 @@ class AIClient:
         self.temperature: float = ai_cfg.get("temperature", 0.2)
         self.max_retries: int = cfg.http.get("max_retries", 3)
         self.backoff_base: float = cfg.http.get("backoff_base", 1.6)
+        # AI 호출 타임아웃(초). 없으면 응답이 안 오는 연결에 무한정 매달려
+        # 자동 실행이 멈추는 일이 있었다(2026-07-30 analyze 행). 넉넉히 잡되 반드시 끊는다.
+        self.timeout: float = ai_cfg.get("request_timeout", 60)
         self.mock: bool = bool(mock) or ai_cfg.get("provider") == "mock"
         self._client: Any = None
 
@@ -50,7 +53,12 @@ class AIClient:
         except ImportError as e:  # pragma: no cover
             raise AIError("openai 패키지가 없습니다. pip install -r requirements.txt") from e
 
-        self._client = OpenAI(api_key=api_key, base_url=os.environ.get("OPENAI_BASE_URL") or None)
+        self._client = OpenAI(
+            api_key=api_key,
+            base_url=os.environ.get("OPENAI_BASE_URL") or None,
+            timeout=self.timeout,
+            max_retries=0,  # 재시도는 retry_call 이 담당 (이중 재시도 방지)
+        )
 
     # ------------------------------------------------------------------
     def json_chat(

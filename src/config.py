@@ -30,6 +30,7 @@ DEFAULTS: dict[str, Any] = {
         "provider": "openai",
         "model": "gpt-4o-mini",
         "embedding_model": "text-embedding-3-small",
+        "request_timeout": 60,
         "temperature": 0.2,
         "summary_max_chars": 200,
         "max_articles_per_analysis": 60,

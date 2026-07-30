@@ -62,7 +62,12 @@ class Embedder:
             )
         from openai import OpenAI
 
-        self._client = OpenAI(api_key=api_key, base_url=os.environ.get("OPENAI_BASE_URL") or None)
+        self._client = OpenAI(
+            api_key=api_key,
+            base_url=os.environ.get("OPENAI_BASE_URL") or None,
+            timeout=cfg.ai.get("request_timeout", 60),
+            max_retries=0,  # 재시도는 retry_call 이 담당
+        )
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         """여러 텍스트를 임베딩. mock 이면 해싱 벡터."""
